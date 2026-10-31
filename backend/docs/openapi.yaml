@@ -1,0 +1,1007 @@
+openapi: 3.0.3
+info:
+  title: PulseForge API
+  description: |
+    PulseForge is an AI‑powered CI/CD observability and optimisation platform.
+    This OpenAPI 3.0 specification describes all public HTTP endpoints exposed by the Go backend.
+  version: "1.0.0"
+  contact:
+    name: PulseForge Team
+    url: https://pulseforge.com
+    email: support@pulseforge.com
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development server
+  - url: https://api.pulseforge.com/api/v1
+    description: Production server
+tags:
+  - name: Auth
+    description: Authentication and user management
+  - name: Health
+    description: Service health checks
+  - name: Webhook
+    description: Ingestion endpoints for CI providers
+  - name: Pipelines
+    description: CRUD operations for pipelines
+  - name: Jobs
+    description: Job retrieval and AI suggestion handling
+  - name: Alerts
+    description: Alert rule management
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 400
+        message:
+          type: string
+          example: Bad request – missing required field 'email'
+      required:
+        - code
+        - message
+    User:
+      type: object
+      description: Application user
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "d5f8c2e1-9b3a-4c2f-8e7a-1f2b3c4d5e6f"
+        name:
+          type: string
+          example: "Jane Doe"
+        email:
+          type: string
+          format: email
+          example: "jane.doe@example.com"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-09-01T12:34:56Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2024-09-10T08:12:45Z"
+      required:
+        - id
+        - name
+        - email
+        - createdAt
+        - updatedAt
+    AuthLoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          example: "jane.doe@example.com"
+        password:
+          type: string
+          format: password
+          example: "SuperSecret123!"
+      required:
+        - email
+        - password
+    AuthLoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT token to be stored in an HttpOnly cookie
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        user:
+          $ref: "#/components/schemas/User"
+      required:
+        - token
+        - user
+    AuthRegisterRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          example: "Jane Doe"
+        email:
+          type: string
+          format: email
+          example: "jane.doe@example.com"
+        password:
+          type: string
+          format: password
+          example: "SuperSecret123!"
+      required:
+        - name
+        - email
+        - password
+    AuthRegisterResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        token:
+          type: string
+          description: JWT token
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      required:
+        - user
+        - token
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, down]
+          example: ok
+        components:
+          type: object
+          properties:
+            database:
+              type: string
+              enum: [ok, down]
+              example: ok
+            redis:
+              type: string
+              enum: [ok, down]
+              example: ok
+            rabbitmq:
+              type: string
+              enum: [ok, down]
+              example: ok
+            workers:
+              type: string
+              enum: [ok, down]
+              example: ok
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-09-15T14:22:30Z"
+      required:
+        - status
+        - components
+        - timestamp
+    ProviderEnum:
+      type: string
+      enum: [github, gitlab, circleci]
+      description: CI provider identifier
+    Pipeline:
+      type: object
+      description: CI pipeline configuration
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+        provider:
+          $ref: "#/components/schemas/ProviderEnum"
+        repository:
+          type: string
+          description: Full repository identifier (e.g., owner/repo)
+          example: "octocat/hello-world"
+        webhookSecret:
+          type: string
+          description: HMAC secret used for webhook verification (write‑only)
+          writeOnly: true
+          example: "s3cr3tK3y"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-09-01T10:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2024-09-12T15:45:20Z"
+      required:
+        - id
+        - provider
+        - repository
+        - createdAt
+        - updatedAt
+    CreatePipelineRequest:
+      type: object
+      properties:
+        provider:
+          $ref: "#/components/schemas/ProviderEnum"
+        repository:
+          type: string
+          example: "octocat/hello-world"
+        webhookSecret:
+          type: string
+          description: Secret used to sign incoming webhooks
+          example: "s3cr3tK3y"
+      required:
+        - provider
+        - repository
+        - webhookSecret
+    JobStatusEnum:
+      type: string
+      enum: [queued, running, success, failure, cancelled, skipped]
+    Job:
+      type: object
+      description: Individual CI job execution
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "f1e2d3c4-5678-90ab-cdef-1234567890ab"
+        pipelineId:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+        externalJobId:
+          type: string
+          description: Identifier from the CI provider
+          example: "12345678"
+        status:
+          $ref: "#/components/schemas/JobStatusEnum"
+        startedAt:
+          type: string
+          format: date-time
+          example: "2024-09-15T12:00:00Z"
+        finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2024-09-15T12:05:30Z"
+        durationMs:
+          type: integer
+          format: int64
+          description: Duration in milliseconds
+          example: 330000
+        logExcerpt:
+          type: string
+          description: First 2 KB of the job log (cached in Redis)
+          example: "Running tests...\nPASS"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-09-15T12:00:01Z"
+      required:
+        - id
+        - pipelineId
+        - externalJobId
+        - status
+        - startedAt
+        - durationMs
+        - createdAt
+    AISuggestion:
+      type: object
+      description: AI‑generated remediation suggestion for a job
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "b2c3d4e5-6789-0abc-def1-234567890abc"
+        jobId:
+          type: string
+          format: uuid
+          example: "f1e2d3c4-5678-90ab-cdef-1234567890ab"
+        suggestionText:
+          type: string
+          description: Full textual recommendation
+          example: "Cache the node_modules directory to reduce install time."
+        confidence:
+          type: number
+          format: float
+          description: Confidence score between 0 and 1
+          example: 0.92
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-09-15T12:10:00Z"
+      required:
+        - id
+        - jobId
+        - suggestionText
+        - confidence
+        - createdAt
+    AlertTypeEnum:
+      type: string
+      enum: [queue_starvation, health_failure, job_failure]
+    Alert:
+      type: object
+      description: Alert rule definition
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "c3d4e5f6-7890-1abc-def2-34567890abcd"
+        pipelineId:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+        type:
+          $ref: "#/components/schemas/AlertTypeEnum"
+        threshold:
+          type: number
+          description: Numeric threshold (e.g., queue length > 10)
+          example: 10
+        enabled:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-09-10T09:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2024-09-12T11:45:00Z"
+      required:
+        - id
+        - pipelineId
+        - type
+        - threshold
+        - enabled
+        - createdAt
+        - updatedAt
+    CreateAlertRequest:
+      type: object
+      properties:
+        pipelineId:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+        type:
+          $ref: "#/components/schemas/AlertTypeEnum"
+        threshold:
+          type: number
+          example: 10
+        enabled:
+          type: boolean
+          default: true
+      required:
+        - pipelineId
+        - type
+        - threshold
+    WebhookPayload:
+      type: object
+      description: Generic webhook payload – actual shape varies per provider; stored as raw JSON.
+      additionalProperties: true
+paths:
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Authenticate a user and obtain a JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthLoginRequest"
+      responses:
+        "200":
+          description: Successful authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthLoginResponse"
+        "400":
+          description: Invalid request payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/register:
+    post:
+      tags:
+        - Auth
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthRegisterRequest"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthRegisterResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Service health check
+      security: []   # public endpoint
+      responses:
+        "200":
+          description: Health status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /webhook/{provider}:
+    post:
+      tags:
+        - Webhook
+      summary: Receive CI provider webhook events
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/ProviderEnum"
+          description: CI provider that sent the webhook
+        - name: X-Hub-Signature-256
+          in: header
+          required: true
+          schema:
+            type: string
+            description: HMAC SHA256 signature of the request body
+        - name: X-Provider-Event
+          in: header
+          required: false
+          schema:
+            type: string
+            description: Provider‑specific event name (e.g., `push`, `pipeline_job`)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookPayload"
+      responses:
+        "202":
+          description: Webhook accepted and queued for processing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Webhook received and will be processed asynchronously."
+        "400":
+          description: Invalid payload or missing signature
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: HMAC validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Provider not supported
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /pipelines:
+    get:
+      tags:
+        - Pipelines
+      summary: List pipelines accessible to the authenticated user
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+          description: Page number for pagination
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+          description: Number of items per page
+      responses:
+        "200":
+          description: Paginated list of pipelines
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pipelines:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Pipeline"
+                  total:
+                    type: integer
+                    example: 42
+                  page:
+                    type: integer
+                    example: 1
+                  limit:
+                    type: integer
+                    example: 20
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags:
+        - Pipelines
+      summary: Create a new pipeline
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePipelineRequest"
+      responses:
+        "201":
+          description: Pipeline created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pipeline"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /pipelines/{pipelineId}:
+    get:
+      tags:
+        - Pipelines
+      summary: Retrieve a single pipeline
+      parameters:
+        - name: pipelineId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Pipeline details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pipeline"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pipeline not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      tags:
+        - Pipelines
+      summary: Update pipeline metadata (excluding webhook secret)
+      parameters:
+        - name: pipelineId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                repository:
+                  type: string
+                  example: "octocat/hello-world"
+                webhookSecret:
+                  type: string
+                  description: New secret; will replace the existing one
+              additionalProperties: false
+      responses:
+        "200":
+          description: Pipeline updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pipeline"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pipeline not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags:
+        - Pipelines
+      summary: Delete a pipeline and all associated data
+      parameters:
+        - name: pipelineId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Pipeline deleted successfully (no content)
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pipeline not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /pipelines/{pipelineId}/jobs:
+    get:
+      tags:
+        - Jobs
+      summary: List jobs for a pipeline
+      parameters:
+        - name: pipelineId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/JobStatusEnum"
+          description: Filter by job status
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: Paginated list of jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Job"
+                  total:
+                    type: integer
+                    example: 128
+                  page:
+                    type: integer
+                    example: 1
+                  limit:
+                    type: integer
+                    example: 20
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pipeline not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /pipelines/{pipelineId}/jobs/{jobId}:
+    get:
+      tags:
+        - Jobs
+      summary: Retrieve details of a specific job
+      parameters:
+        - name: pipelineId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Job details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /pipelines/{pipelineId}/jobs/{jobId}/ai-suggestion:
+    get:
+      tags:
+        - Jobs
+      summary: Get AI suggestion for a job, if available
+      parameters:
+        - name: pipelineId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: AI suggestion found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AISuggestion"
+        "204":
+          description: No suggestion generated yet
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /alerts:
+    get:
+      tags:
+        - Alerts
+      summary: List alert rules for the authenticated user
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: Paginated list of alerts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alerts:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Alert"
+                  total:
+                    type: integer
+                    example: 5
+                  page:
+                    type: integer
+                    example: 1
+                  limit:
+                    type: integer
+                    example: 20
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags:
+        - Alerts
+      summary: Create a new alert rule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAlertRequest"
+      responses:
+        "201":
+          description: Alert created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alert"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /alerts/{alertId}:
+    get:
+      tags:
+        - Alerts
+      summary: Retrieve a specific alert rule
+      parameters:
+        - name: alertId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Alert details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alert"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Alert not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      tags:
+        - Alerts
+      summary: Update an existing alert rule
+      parameters:
+        - name: alertId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                threshold:
+                  type: number
+                enabled:
+                  type: boolean
+              additionalProperties: false
+      responses:
+        "200":
+          description: Alert updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alert"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Alert not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags:
+        - Alerts
+      summary: Delete an alert rule
+      parameters:
+        - name: alertId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Alert deleted successfully
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Alert not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+externalDocs:
+  description: PulseForge API documentation
+  url: https://docs.pulseforge.com/api

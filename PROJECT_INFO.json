@@ -1,0 +1,286 @@
+{
+  "name": "PulseForge",
+  "description": "PulseForge is an AI‑powered CI/CD observability and optimization platform. It continuously monitors pipelines across GitHub Actions, GitLab CI, and CircleCI, detects queue starvation, health‑check failures, and performance regressions, and surfaces actionable AI‑driven recommendations. Teams get a real‑time dashboard, secure webhook ingestion with constant‑time HMAC validation, secret‑manager integration, and an in‑product AI chat that can rewrite flaky steps, suggest caching strategies, and generate OpenAPI‑compatible health endpoints automatically.",
+  "category": "Developer Tools / DevOps SaaS",
+  "technologies": [
+    "Go (Gin)",
+    "PostgreSQL",
+    "Redis",
+    "RabbitMQ",
+    "Docker / Docker‑Compose",
+    "Next.js (React, TypeScript)",
+    "Tailwind CSS",
+    "OpenAI / Ollama (LLM adapters)",
+    "Google Cloud Secret Manager (optional)",
+    "GitHub GraphQL API"
+  ],
+  "target_users": [
+    "Site reliability engineers",
+    "DevOps teams",
+    "Software engineering managers",
+    "Platform engineering groups"
+  ],
+  "problem": "Modern CI/CD pipelines are opaque, prone to hidden bottlenecks (queue starvation, flaky jobs, secret leaks) and lack actionable insights. Teams spend hours manually digging logs, writing health‑check endpoints, and tuning pipelines. Existing monitoring tools are generic and do not provide AI‑driven remediation or secure webhook handling out of the box.",
+  "features": [
+    "Unified pipeline ingestion from GitHub Actions, GitLab CI, CircleCI via secure webhooks",
+    "Constant‑time HMAC validation for webhook authenticity",
+    "Real‑time health‑check endpoint generator (OpenAPI 3.0) for each pipeline",
+    "AI engine that analyses recent job logs, detects patterns, and suggests concrete refactorings (e.g., caching, parallelism, timeout adjustments)",
+    "Queue starvation detector that monitors pending jobs across providers and raises alerts",
+    "Dashboard with pipeline overview, job timelines, error heat‑maps, and AI‑generated remediation cards",
+    "In‑product AI chat (LLM‑backed) that can answer “why did this job fail?” and rewrite YAML snippets",
+    "Integration with Google Cloud Secret Manager / HashiCorp Vault for secure storage of tokens",
+    "Alerting via email, Slack, and webhook to external incident tools",
+    "Server‑less task runner (RabbitMQ + Go workers) that processes heavy log analysis and LLM calls asynchronously",
+    "Exportable OpenAPI spec for the health‑check API and webhook contract"
+  ],
+  "architecture": "The system follows a micro‑service‑ish monolith pattern.\n\n**Backend (Go)**\n- `gin-gonic` HTTP server exposing REST + GraphQL endpoints.\n- Middleware stack: authentication (JWT), HMAC validation, request logging, panic recovery.\n- PostgreSQL stores users, pipelines, jobs, AI suggestions, and alert rules.\n- Redis caches recent job logs and AI responses for low latency.\n- RabbitMQ drives two background workers: `queue_monitor` (polls CI providers for queue length) and `ai_suggester` (feeds logs to LLM and stores suggestions).\n- Secret manager client abstracts Google Secret Manager or Vault; secrets are never persisted in DB.\n- OpenAPI 3.0 spec is generated from annotated handlers and served via Swagger UI.\n\n**Frontend (Next.js)**\n- TypeScript React SPA with server‑side rendering for SEO‑critical pages.\n- Tailwind‑CSS design system (spacing, colors, typography) ensures a premium look.\n- Auth handled via JWT stored in HttpOnly cookie; React context provides user state.\n- Data fetching via SWR hooks; real‑time updates via WebSocket (optional) or polling.\n- AI chat component streams LLM responses.\n\n**Deployment**\n- Docker‑Compose for local dev (services: api, web, db, redis, rabbitmq).\n- Production can be deployed to Kubernetes; Helm chart omitted for brevity.\n- Health‑check endpoint `/api/health` returns JSON with DB, Redis, and worker status.\n\n**Security**\n- All external webhook endpoints require HMAC signature verified in constant time.\n- Rate limiting per IP using Redis token bucket.\n- CSP, XSS protection, and secure cookie flags.\n- Auditing logs written to PostgreSQL and forwarded to external SIEM via syslog.\n\n**Scalability**\n- Horizontal scaling of API containers behind a load balancer.\n- Workers can be scaled independently; job queue persists in RabbitMQ.\n- Read‑replica of PostgreSQL optional for analytics.\n",
+  "design_system": "PulseForge adopts a clean, enterprise‑grade UI built on Tailwind CSS and a custom component library:\n- **Typography**: Inter (400/500/600) for body, headings; 14‑px base, 1.5 line‑height.\n- **Color palette**: Primary #0F62FE, Secondary #6F6F6F, Success #24A148, Danger #DA1E28, Background #F4F7FA, Card #FFFFFF, Border #E0E0E0.\n- **Spacing**: 4‑px grid (4,8,12,16,24,32,48).\n- **Components**: Card, Table, Badge, Avatar, Modal, Tabs, Toast, LoadingSkeleton, AIChatBubble.\n- **Interaction states**: hover/active shadows, focus rings, disabled opacity.\n- **Responsive layout**: Sidebar collapses to hamburger on <768px; dashboard grid reflows from 4‑col to 1‑col.\n- **Accessibility**: ARIA labels, keyboard navigation, color contrast ≥4.5:1.\n- **Charts**: Recharts (line for queue length, heat‑map for failure frequency).\n- **Empty/Loading/Error states**: Illustrated placeholders with concise copy and CTA buttons.\nThe UI is fully functional; components are coded as reusable React/TSX files with props typed for strict contracts.",
+  "testing": "Comprehensive testing pyramid:\n- **Unit**: Go `testing` + `testify` for services, repositories, utils; Jest + React Testing Library for UI components.\n- **Integration**: Test API routes with `httptest` server and a Docker‑Compose‑based PostgreSQL/Redis fixture.\n- **End‑to‑End**: Cypress tests covering login, pipeline ingestion, dashboard rendering, AI chat flow, and alert creation.\n- **Load/Performance**: k6 scripts simulating 500 concurrent webhook posts and 200 dashboard users.\n- **Security**: Automated scans for HMAC timing attacks, JWT tampering, and secret leakage using `gosec` and `npm audit`.\n- **CI**: GitHub Actions pipeline runs lint, unit, integration, and Cypress on each PR; nightly k6 load test.\nAll test artifacts are versioned in the repo under `tests/`.",
+  "files": [
+    {
+      "path": "backend/go.mod",
+      "purpose": "Go module definition with dependencies."
+    },
+    {
+      "path": "backend/go.sum",
+      "purpose": "Checksum file for Go modules."
+    },
+    {
+      "path": "backend/main.go",
+      "purpose": "Application entry point; sets up router, DB, Redis, RabbitMQ, and starts HTTP server."
+    },
+    {
+      "path": "backend/config/config.go",
+      "purpose": "Loads configuration from environment variables with defaults; supports secret manager overrides."
+    },
+    {
+      "path": "backend/logger/logger.go",
+      "purpose": "Structured logger (zap) wrapper used across services."
+    },
+    {
+      "path": "backend/router/router.go",
+      "purpose": "Defines all HTTP routes, attaches middleware, and registers controllers."
+    },
+    {
+      "path": "backend/middleware/auth.go",
+      "purpose": "JWT authentication middleware; extracts user from token and injects into context."
+    },
+    {
+      "path": "backend/middleware/hmac.go",
+      "purpose": "Constant‑time HMAC validation for incoming webhook requests."
+    },
+    {
+      "path": "backend/middleware/health.go",
+      "purpose": "Health‑check endpoint `/api/health` returning status of DB, Redis, and workers."
+    },
+    {
+      "path": "backend/middleware/recovery.go",
+      "purpose": "Global panic recovery with JSON error response and logging."
+    },
+    {
+      "path": "backend/models/user.go",
+      "purpose": "User entity definition and GORM annotations."
+    },
+    {
+      "path": "backend/models/pipeline.go",
+      "purpose": "Pipeline entity storing provider, repo, webhook secret, and metadata."
+    },
+    {
+      "path": "backend/models/job.go",
+      "purpose": "Job entity storing log excerpt, status, duration, and AI suggestion foreign key."
+    },
+    {
+      "path": "backend/models/ai_suggestion.go",
+      "purpose": "AI suggestion entity with generated text, confidence, and linked job ID."
+    },
+    {
+      "path": "backend/db/migrations/001_init.sql",
+      "purpose": "Initial schema creation for users, pipelines, jobs, and suggestions."
+    },
+    {
+      "path": "backend/db/migrations/002_add_indexes.sql",
+      "purpose": "Performance indexes on pipeline_id, status, created_at."
+    },
+    {
+      "path": "backend/repository/user_repo.go",
+      "purpose": "CRUD operations for User model."
+    },
+    {
+      "path": "backend/repository/pipeline_repo.go",
+      "purpose": "Operations to create, fetch, and list pipelines; includes secret handling."
+    },
+    {
+      "path": "backend/repository/job_repo.go",
+      "purpose": "Persist and query job logs; supports bulk insert for webhook batches."
+    },
+    {
+      "path": "backend/repository/ai_repo.go",
+      "purpose": "Store and retrieve AI suggestions linked to jobs."
+    },
+    {
+      "path": "backend/service/pipeline_service.go",
+      "purpose": "Business logic for ingesting webhook payloads, normalizing data, and triggering async analysis."
+    },
+    {
+      "path": "backend/service/ai_service.go",
+      "purpose": "Wrapper around OpenAI/Ollama client; formats logs, calls LLM, parses suggestions."
+    },
+    {
+      "path": "backend/service/alert_service.go",
+      "purpose": "Creates alerts, sends email/Slack/webhook notifications based on rules."
+    },
+    {
+      "path": "backend/service/queue_monitor.go",
+      "purpose": "Background worker that polls CI providers' queue APIs and updates DB metrics."
+    },
+    {
+      "path": "backend/service/ai_suggester.go",
+      "purpose": "Background worker that consumes job IDs from RabbitMQ, fetches logs, invokes AI, stores results."
+    },
+    {
+      "path": "backend/controller/webhook_controller.go",
+      "purpose": "Handles `/webhook/:provider` POST; validates HMAC, parses payload, stores jobs, enqueues analysis."
+    },
+    {
+      "path": "backend/controller/pipeline_controller.go",
+      "purpose": "REST endpoints for UI: list pipelines, get pipeline details, fetch AI suggestions, manage alerts."
+    },
+    {
+      "path": "backend/utils/hmac.go",
+      "purpose": "Utility for constant‑time HMAC comparison and signature generation."
+    },
+    {
+      "path": "backend/utils/llm_client.go",
+      "purpose": "Abstraction over OpenAI and Ollama APIs; supports streaming responses."
+    },
+    {
+      "path": "backend/docs/openapi.yaml",
+      "purpose": "OpenAPI 3.0 specification generated from annotated handlers; served via Swagger UI."
+    },
+    {
+      "path": "backend/Dockerfile",
+      "purpose": "Multi‑stage Docker build for the Go API (builder → slim runtime)."
+    },
+    {
+      "path": "backend/docker-compose.yml",
+      "purpose": "Local development stack: api, db (Postgres), redis, rabbitmq, and mock secret manager."
+    },
+    {
+      "path": "frontend/package.json",
+      "purpose": "Node package manifest with dependencies (next, react, tailwind, recharts, axios, swr, jest, cypress)."
+    },
+    {
+      "path": "frontend/tsconfig.json",
+      "purpose": "TypeScript compiler configuration for strict type checking."
+    },
+    {
+      "path": "frontend/next.config.js",
+      "purpose": "Next.js configuration enabling API routes proxy to backend and image optimization."
+    },
+    {
+      "path": "frontend/tailwind.config.js",
+      "purpose": "Tailwind CSS custom theme matching the design system colors and spacing."
+    },
+    {
+      "path": "frontend/postcss.config.js",
+      "purpose": "PostCSS setup for Tailwind processing."
+    },
+    {
+      "path": "frontend/.eslintrc.js",
+      "purpose": "ESLint rules for code quality and consistency."
+    },
+    {
+      "path": "frontend/.gitignore",
+      "purpose": "Standard ignore file for node_modules, build artifacts, env files."
+    },
+    {
+      "path": "frontend/styles/globals.css",
+      "purpose": "Base Tailwind imports and global CSS resets."
+    },
+    {
+      "path": "frontend/components/Layout.tsx",
+      "purpose": "Responsive layout with header, collapsible sidebar, and content slot."
+    },
+    {
+      "path": "frontend/components/Dashboard.tsx",
+      "purpose": "Main dashboard showing pipeline cards, queue heat‑map, and AI suggestion carousel."
+    },
+    {
+      "path": "frontend/components/PipelineCard.tsx",
+      "purpose": "Card component displaying pipeline name, provider badge, health status, and quick actions."
+    },
+    {
+      "path": "frontend/components/JobTable.tsx",
+      "purpose": "Table listing recent jobs with status chips, duration, and link to AI suggestion."
+    },
+    {
+      "path": "frontend/components/AlertBanner.tsx",
+      "purpose": "Dismissable banner for system alerts (queue starvation, failed health checks)."
+    },
+    {
+      "path": "frontend/components/AIChat.tsx",
+      "purpose": "Chat UI that streams LLM responses, supports code snippet rendering, and copy‑to‑clipboard."
+    },
+    {
+      "path": "frontend/components/LoadingSkeleton.tsx",
+      "purpose": "Skeleton placeholders used during data fetches."
+    },
+    {
+      "path": "frontend/pages/_app.tsx",
+      "purpose": "Custom App component injecting AuthContext provider and global styles."
+    },
+    {
+      "path": "frontend/pages/index.tsx",
+      "purpose": "Redirects to `/dashboard` after auth check."
+    },
+    {
+      "path": "frontend/pages/dashboard.tsx",
+      "purpose": "Renders Dashboard component; fetches pipelines via SWR."
+    },
+    {
+      "path": "frontend/pages/pipelines/[id].tsx",
+      "purpose": "Detailed view for a single pipeline: job timeline chart, AI suggestions list, health endpoint preview."
+    },
+    {
+      "path": "frontend/pages/settings.tsx",
+      "purpose": "User settings page for managing API tokens, secret manager integration, and notification preferences."
+    },
+    {
+      "path": "frontend/context/AuthContext.tsx",
+      "purpose": "React context handling JWT storage, login/logout, and user role propagation."
+    },
+    {
+      "path": "frontend/hooks/usePipelines.ts",
+      "purpose": "Custom hook wrapping SWR to fetch pipelines with caching and error handling."
+    },
+    {
+      "path": "frontend/hooks/useJobs.ts",
+      "purpose": "Hook to fetch jobs for a pipeline, supports pagination and real‑time refresh."
+    },
+    {
+      "path": "frontend/utils/api.ts",
+      "purpose": "Axios instance with base URL, JWT interceptor, and error transformer."
+    },
+    {
+      "path": "frontend/public/favicon.ico",
+      "purpose": "Brand favicon for the web app."
+    },
+    {
+      "path": "frontend/tests/unit/components/Dashboard.test.tsx",
+      "purpose": "Jest unit test ensuring Dashboard renders correct number of PipelineCards."
+    },
+    {
+      "path": "frontend/tests/e2e/cypress/integration/login_flow.spec.js",
+      "purpose": "Cypress end‑to‑end test covering login, dashboard load, and AI chat interaction."
+    },
+    {
+      "path": "frontend/Dockerfile",
+      "purpose": "Multi‑stage build: node install → production build → serve with nginx."
+    },
+    {
+      "path": "frontend/docker-compose.yml",
+      "purpose": "Compose file linking frontend container with backend API for local dev."
+    }
+  ]
+}

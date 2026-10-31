@@ -1,0 +1,124 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: pulseforge-api:dev
+    container_name: pulseforge-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      secret-manager:
+        condition: service_healthy
+    environment:
+      # Core configuration – override with .env if needed
+      - APP_ENV=development
+      - APP_PORT=8080
+      - LOG_LEVEL=debug
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER:-pulseforge}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-pulseforge_pwd}
+      - DB_NAME=${POSTGRES_DB:-pulseforge}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - SECRET_MANAGER_TYPE=vault
+      - VAULT_ADDR=http://secret-manager:8200
+      - VAULT_TOKEN=${VAULT_DEV_ROOT_TOKEN_ID:-root}
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - pulseforge
+
+  db:
+    image: postgres:15-alpine
+    container_name: pulseforge-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-pulseforge}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-pulseforge_pwd}
+      - POSTGRES_DB=${POSTGRES_DB:-pulseforge}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pulseforge}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pulseforge
+
+  redis:
+    image: redis:7-alpine
+    container_name: pulseforge-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pulseforge
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: pulseforge-rabbitmq
+    restart: unless-stopped
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmqctl status"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pulseforge
+
+  secret-manager:
+    image: hashicorp/vault:1.15
+    container_name: pulseforge-vault
+    restart: unless-stopped
+    command: ["server", "-dev", "-dev-root-token-id=root"]
+    environment:
+      - VAULT_DEV_ROOT_TOKEN_ID=root
+    ports:
+      - "8200:8200"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8200/v1/sys/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pulseforge
+
+networks:
+  pulseforge:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:

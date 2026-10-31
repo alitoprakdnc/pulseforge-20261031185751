@@ -1,0 +1,60 @@
+version: "3.9"
+
+services:
+  # -------------------------------------------------
+  # Frontend – Next.js SPA served by Nginx
+  # -------------------------------------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: pulseforge-frontend:latest
+    container_name: pulseforge-frontend
+    ports:
+      - "3000:80"
+    environment:
+      NODE_ENV: production
+      # The backend API is reachable via the Docker network using the alias `api`.
+      NEXT_PUBLIC_API_URL: http://api:8080
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      pulseforge:
+        aliases:
+          - frontend
+
+  # -------------------------------------------------
+  # API – Go service (optional when running both stacks together)
+  # -------------------------------------------------
+  # The real implementation lives in ./backend/docker-compose.yml.
+  # This stub allows `docker-compose up` from the frontend directory
+  # to spin up a minimal API for quick local testing.
+  api:
+    image: pulseforge-api:latest
+    container_name: pulseforge-api
+    ports:
+      - "8080:8080"
+    environment:
+      NODE_ENV: development
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      pulseforge:
+        aliases:
+          - api
+
+networks:
+  pulseforge:
+    name: pulseforge
+    driver: bridge
